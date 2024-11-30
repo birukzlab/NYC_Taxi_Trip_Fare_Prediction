@@ -108,8 +108,6 @@ class DataPreprocessor:
             "day_of_week",
             "PU_freq",
             "DO_freq",
-            "distance_hour",
-            "PU_DO_interaction",
             "PU_cluster",
             "DO_cluster",
             "rush_hour"
