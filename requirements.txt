@@ -3,9 +3,10 @@ pandas
 numpy
 scikit-learn
 matplotlib
-tensorflow
 joblib
 seaborn
 xgboost
-keras
+requests
+
+
 
