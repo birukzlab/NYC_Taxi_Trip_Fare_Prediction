@@ -3,6 +3,8 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 import requests
+import pickle
+import os
 
 class DataPreprocessor:
     def __init__(self, api_url, params):
@@ -14,62 +16,72 @@ class DataPreprocessor:
         self.df = self.fetch_data()
         self.scaler = StandardScaler()
         
-    def fetch_data(self):
+    def fetch_data(self, save_path="data/raw_data.csv"):
         """
-        Fetch data from the NYC API.
+        Fetch data from the NYC API or load it from a saved file if available.
         """
-        response = requests.get(self.api_url, params=self.params)
-        if response.status_code == 200:
-            data = response.json()
-            print("Data fetched successfully.")
-            return pd.DataFrame(data)
+        
+        if os.path.exists(save_path):
+            print("Loading data from local file.")
+            return pd.read_csv(save_path)
         else:
-            raise Exception(f"Failed to fetch data: {response.status_code}")
+            response = requests.get(self.api_url, params=self.params)
+            if response.status_code == 200:
+                data = response.json()
+                df = pd.DataFrame(data)
+                df.to_csv(save_path, index=False)
+                print(f"Data fetched and saved to {save_path}.")
+                return df
+            else:
+                raise Exception(f"Failed to fetch data: {response.status_code}")
 
-    
     def clean_data(self):
         """
         Cleans the dataset by:
         - Converting data types
-        - Removing outliers
-        - Dropping missing or invalid rows
+        - Removing outliers based on fare amount and trip distance thresholds
         """
         # Convert datetime columns to datetime type
         self.df["tpep_pickup_datetime"] = pd.to_datetime(self.df["tpep_pickup_datetime"])
         self.df["tpep_dropoff_datetime"] = pd.to_datetime(self.df["tpep_dropoff_datetime"])
-        self.df['trip_distance'] = pd.to_numeric(self.df['trip_distance'])
-        self.df['fare_amount'] = pd.to_numeric(self.df['fare_amount'])
-        self.df['PULocationID'] = pd.to_numeric(self.df['PULocationID'])
-        self.df['DOLocationID'] = pd.to_numeric(self.df['DOLocationID'])
-        self.df['passenger_count'] = pd.to_numeric(self.df['passenger_count'])
 
-        # hour and day_of_week
-        self.df.loc[:, "hour"] = self.df["tpep_pickup_datetime"].dt.hour
-        self.df.loc[:, 'day_of_week'] = self.df['tpep_pickup_datetime'].dt.dayofweek
-        
-        # Remove rows where trip distance or fare amount are unrealistic
-        self.df = self.df[(self.df["trip_distance"] > 0) & (self.df["fare_amount"] > 0)]
-        
-        # Remove outliers using Interquartile Range (IQR)
-        for column in ["trip_distance", "fare_amount"]:
-            Q1 = self.df[column].quantile(0.25)
-            Q3 = self.df[column].quantile(0.75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            self.df = self.df[(self.df[column] >= lower_bound) & (self.df[column] <= upper_bound)]
-        
-        print("Data cleaned: Outliers removed, and data types updated.")
+        # Convert numeric columns to appropriate types
+        self.df['trip_distance'] = pd.to_numeric(self.df['trip_distance'], errors='coerce')
+        self.df['fare_amount'] = pd.to_numeric(self.df['fare_amount'], errors='coerce')
+        self.df['PULocationID'] = pd.to_numeric(self.df['PULocationID'], errors='coerce')
+        self.df['DOLocationID'] = pd.to_numeric(self.df['DOLocationID'], errors='coerce')
+        self.df['passenger_count'] = pd.to_numeric(self.df['passenger_count'], errors='coerce')
+
+        # Add new columns: hour and day_of_week
+        self.df["hour"] = self.df["tpep_pickup_datetime"].dt.hour
+        self.df["day_of_week"] = self.df["tpep_pickup_datetime"].dt.dayofweek
+
+        # Remove rows where fare amount or trip distance are unrealistic
+        self.df = self.df[
+            (self.df["fare_amount"] >= 2.5) & 
+            (self.df["fare_amount"] <= 200) & 
+            (self.df["trip_distance"] > 0) & 
+            (self.df["trip_distance"] <= 100)
+        ]
+
+        print("Data cleaned: Unrealistic fare amounts and distances capped.")
+
     
-    def add_location_frequencies(self):
+    def add_location_frequencies(self, save_dir="models/"):
         """
         Adds `PU_freq` and `DO_freq` columns, representing the frequency
-        of pickup and dropoff locations.
+        of pickup and dropoff locations, and saves the mappings.
         """
         # Calculate frequencies for pickup and dropoff locations
-        self.df["PU_freq"] = self.df["PULocationID"].map(self.df["PULocationID"].value_counts())
-        self.df["DO_freq"] = self.df["DOLocationID"].map(self.df["DOLocationID"].value_counts())
-        print("Location frequencies added: 'PU_freq' and 'DO_freq'.")
+        PU_freq_mapping = self.df["PULocationID"].value_counts().to_dict()
+        DO_freq_mapping = self.df["DOLocationID"].value_counts().to_dict()
+
+        # Add frequencies to the dataset
+        self.df["PU_freq"] = self.df["PULocationID"].map(PU_freq_mapping)
+        self.df["DO_freq"] = self.df["DOLocationID"].map(DO_freq_mapping)
+        
+
+        print("Location frequencies added and saved: 'PU_freq' and 'DO_freq'.")
     
     def add_interaction_terms(self):
         """
@@ -79,15 +91,16 @@ class DataPreprocessor:
         self.df["PU_DO_interaction"] = self.df["PU_freq"] * self.df["DO_freq"]
         print("Interaction terms added.")
     
-    def add_clusters(self, n_clusters=10):
-        """
-        Adds pickup and dropoff clusters using KMeans.
-        """
+    def add_clusters(self, n_clusters=10, save_dir="models/"):
+        # Ensure KMeans is trained on NumPy arrays without headers
         kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        self.df["PU_cluster"] = kmeans.fit_predict(self.df[["PU_freq"]])
-        self.df["DO_cluster"] = kmeans.fit_predict(self.df[["DO_freq"]])
-        print(f"Clusters added: {n_clusters} clusters created.")
-    
+
+        # Fit the model and assign clusters
+        self.df["PU_cluster"] = kmeans.fit_predict(self.df[["PU_freq"]].values)
+        self.df["DO_cluster"] = kmeans.fit_predict(self.df[["DO_freq"]].values)
+
+        print(f"Clusters added: {n_clusters} clusters created and model saved.")
+
     def add_rush_hour_flag(self):
         """
         Adds a binary flag for rush hour trips.
@@ -106,10 +119,6 @@ class DataPreprocessor:
             "trip_distance",
             "hour",
             "day_of_week",
-            "PU_freq",
-            "DO_freq",
-            "PU_cluster",
-            "DO_cluster",
             "rush_hour"
         ]]
         y = self.df["fare_amount"]
