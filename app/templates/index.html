@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NYC Taxi Fare Prediction</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>NYC Taxi Fare Prediction</h1>
+    </header>
+    <main>
+        <form action="/predict" method="POST">
+            <label for="trip_distance">Trip Distance (miles):</label>
+            <input type="number" step="0.1" id="trip_distance" name="trip_distance" required>
+            
+            <label for="hour">Hour of the Day (0-23):</label>
+            <input type="number" id="hour" name="hour" min="0" max="23" required>
+            
+            <label for="day_of_week">Day of the Week (0 = Mon, 6 = Sun):</label>
+            <input type="number" id="day_of_week" name="day_of_week" min="0" max="6" required>
+            
+            <label for="rush_hour">Is it Rush Hour? (1 = Yes, 0 = No):</label>
+            <input type="number" id="rush_hour" name="rush_hour" min="0" max="1" required>
+            
+            <button type="submit">Predict Fare</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2024 NYC Taxi Fare Prediction</p>
+    </footer>
+</body>
+</html>
+
+
+
+
+
+
+
+

@@ -7,7 +7,7 @@ API_PARAMS = {
     "$select": "tpep_pickup_datetime, tpep_dropoff_datetime, trip_distance, fare_amount, PULocationID, DOLocationID, passenger_count"
 }
 
-# Model Training Parameters
+# Model Training Parameters - Used Gridsearch to find the best Parameters
 RANDOM_FOREST_PARAMS = {
     "n_estimators": 300,
     "max_depth": 10,
